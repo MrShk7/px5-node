@@ -1,6 +1,7 @@
 const crypto = require('crypto')
 const OtpToken = require('../models/OtpToken')
 const User = require('../models/User')
+const { sendOtpEmail } = require('../services/emailService')
 
 const OTP_TTL_MS = 2 * 60 * 1000
 const MAX_OTP_ATTEMPTS = 5
@@ -60,6 +61,12 @@ const requestOtp = async (req, res) => {
   const isProduction = process.env.NODE_ENV === 'production'
 
   const user = await User.findOne({ email: normalizedEmail }).lean()
+
+  try {
+    await sendOtpEmail({ to: normalizedEmail, otp })
+  } catch (error) {
+    console.error('Failed to send OTP email:', error.message)
+  }
 
   return res.json({
     success: true,
