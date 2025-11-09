@@ -63,7 +63,7 @@ const requestOtp = async (req, res) => {
   const user = await User.findOne({ email: normalizedEmail }).lean()
 
   try {
-    await sendOtpEmail({ to: normalizedEmail, otp })
+    // await sendOtpEmail({ to: normalizedEmail, otp })
   } catch (error) {
     console.error('Failed to send OTP email:', error.message)
   }
