@@ -1,4 +1,6 @@
 const crypto = require('crypto')
+const { OAuth2Client } = require('google-auth-library')
+const slugify = require('../utils/slugify')
 const OtpToken = require('../models/OtpToken')
 const User = require('../models/User')
 const { sendOtpEmail } = require('../services/emailService')
@@ -30,6 +32,10 @@ const shapeUser = (userDoc) => {
     updatedAt: userDoc.updatedAt,
   }
 }
+
+const googleClient = process.env.GOOGLE_CLIENT_ID
+  ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+  : null
 
 const requestOtp = async (req, res) => {
   const { email } = req.body
@@ -160,8 +166,141 @@ const verifyOtp = async (req, res) => {
   })
 }
 
+const socialLogin = async (req, res) => {
+  if (!googleClient) {
+    return res.status(500).json({
+      success: false,
+      message: 'Google login is not configured on the server.',
+    })
+  }
+
+  const { token } = req.body
+
+  if (!token) {
+    return res.status(400).json({
+      success: false,
+      message: 'Token is required for social login.',
+    })
+  }
+
+  let ticket
+  try {
+    ticket = await googleClient.verifyIdToken({
+      idToken: token,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    })
+  } catch (error) {
+    return res.status(401).json({
+      success: false,
+      message: 'Invalid Google token.',
+    })
+  }
+
+  const payload = ticket.getPayload() || {}
+  const email = payload.email
+  const emailVerified = payload.email_verified
+  const name = payload.name
+
+  if (!email || !emailVerified) {
+    return res.status(400).json({
+      success: false,
+      message: 'Google account email is not verified.',
+    })
+  }
+
+  const normalizedEmail = normalizeEmail(email)
+
+  let user = await User.findOne({ email: normalizedEmail })
+
+  if (!user) {
+    user = new User({
+      email: normalizedEmail,
+      accountType: 'freelancer',
+      profession: name
+        ? {
+            userName: name,
+          }
+        : undefined,
+      individualProfile: name
+        ? {
+            displayName: name,
+          }
+        : undefined,
+    })
+  }
+
+  user.email = normalizedEmail
+  user.emailVerifiedAt = new Date()
+
+  if (!user.accountType) {
+    user.accountType = 'freelancer'
+  }
+
+  if (name) {
+    user.profession = user.profession || {}
+    if (!user.profession.userName) {
+      user.profession.userName = name
+    }
+
+    if (user.accountType === 'studio') {
+      user.studioProfile = user.studioProfile || {}
+      if (!user.studioProfile.studioName) {
+        user.studioProfile.studioName = name
+      }
+    } else {
+      user.individualProfile = user.individualProfile || {}
+      if (!user.individualProfile.displayName) {
+        user.individualProfile.displayName = name
+      }
+    }
+  }
+
+  await user.save()
+
+  return res.json({
+    success: true,
+    message: 'Login successful.',
+    user: shapeUser(user),
+  })
+}
+
+const checkHandle = async (req, res) => {
+  const { handle, email } = req.body || {}
+
+  if (!handle) {
+    return res.status(400).json({
+      success: false,
+      message: 'Handle is required.',
+    })
+  }
+
+  const slug = slugify(handle)
+
+  if (!slug) {
+    return res.status(400).json({
+      success: false,
+      message: 'Handle must contain alphanumeric characters.',
+    })
+  }
+
+  const normalizedEmail = email ? normalizeEmail(email) : null
+  const existing = await User.findOne({ handle: slug }).select('email').lean()
+
+  const available = !existing || (normalizedEmail && existing.email === normalizedEmail)
+
+  return res.json({
+    success: true,
+    data: {
+      handle: slug,
+      available,
+    },
+  })
+}
+
 module.exports = {
   requestOtp,
   verifyOtp,
+  socialLogin,
+  checkHandle,
 }
 

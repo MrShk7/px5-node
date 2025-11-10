@@ -11,6 +11,7 @@ const publicRouter = require('./public')
 const portfolioRouter = require('./portfolio')
 const dashboardRouter = require('./dashboard')
 const profileRouter = require('./profile')
+const adminRouter = require('./admin')
 
 const router = Router()
 
@@ -32,6 +33,7 @@ router.use('/public', publicRouter)
 router.use('/portfolio', portfolioRouter)
 router.use('/dashboard', dashboardRouter)
 router.use('/profile', profileRouter)
+router.use('/admin', adminRouter)
 
 module.exports = router
 
